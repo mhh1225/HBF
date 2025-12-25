@@ -1581,6 +1581,28 @@ class ChapterGenerationNode(BaseNode):
     #     }
 
     # 马欢欢新修改好的方法
+    # 12.18日马欢欢把这些代码注释掉
+    # @staticmethod
+    # def _as_paragraph_block(text: str, sources: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    #     """将字符串包装成paragraph block，同时附带来源标注"""
+    #     # 1. 生成核心文本的inline内容
+    #     inlines = [ChapterGenerationNode._as_inline_run(text)]
+    #
+    #     # 2. 追加来源标注（如果有来源数据）
+    #     if sources and len(sources) > 0:
+    #         # 格式化来源（最多显示3个来源，避免冗余）
+    #         source_links = [
+    #             f"[{i + 1}]({s['url']})"  # 生成“[1](https://xxx.com)”格式的来源链接
+    #             for i, s in enumerate(sources[:3])
+    #         ]
+    #         source_note = f"\n\n【信息来源】：{', '.join(source_links)}"
+    #         inlines.append(ChapterGenerationNode._as_inline_run(source_note))
+    #
+    #     return {
+    #         "type": "paragraph",
+    #         "inlines": inlines,
+    #     }
+    # 马欢欢新修改的
     @staticmethod
     def _as_paragraph_block(text: str, sources: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         """将字符串包装成paragraph block，同时附带来源标注"""
@@ -1589,19 +1611,24 @@ class ChapterGenerationNode(BaseNode):
 
         # 2. 追加来源标注（如果有来源数据）
         if sources and len(sources) > 0:
+            source_links = []
             # 格式化来源（最多显示3个来源，避免冗余）
-            source_links = [
-                f"[{i + 1}]({s['url']})"  # 生成“[1](https://xxx.com)”格式的来源链接
-                for i, s in enumerate(sources[:3])
-            ]
-            source_note = f"\n\n【信息来源】：{', '.join(source_links)}"
-            inlines.append(ChapterGenerationNode._as_inline_run(source_note))
+            for i, s in enumerate(sources[:3]):
+                # 关键修复：确保取出的URL没有换行符
+                raw_url = str(s.get('url', '')).replace("\n", "").replace("\r", "").strip()
+                if raw_url.startswith("http"):
+                    # 生成“[1](https://xxx.com)”格式
+                    source_links.append(f"[{i + 1}]({raw_url})")
+
+            if source_links:
+                # 拼接成：【信息来源】：[1](url), [2](url)
+                source_note = f"\n\n【信息来源】：{', '.join(source_links)}"
+                inlines.append(ChapterGenerationNode._as_inline_run(source_note))
 
         return {
             "type": "paragraph",
             "inlines": inlines,
         }
-
     @staticmethod
     def _as_inline_run(text: str) -> Dict[str, Any]:
         """构造基础inline run，保证marks字段存在"""

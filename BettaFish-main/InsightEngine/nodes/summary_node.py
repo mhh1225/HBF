@@ -96,6 +96,26 @@ class FirstSummaryNode(StateMutationNode):
             if FORUM_READER_AVAILABLE and 'host_speech' in data and data['host_speech']:
                 formatted_host = format_host_speech_for_prompt(data['host_speech'])
                 message = formatted_host + "\n" + message
+
+            # 马欢欢新添加--- 导师建议：插入监控代码 (调试用) ---
+            if isinstance(data, dict) and 'search_results' in data:
+                results = data['search_results']
+                if results and len(results) > 0:
+                    first_res = results[0]
+
+                    # 关键修复：判断 first_res 的类型
+                    if isinstance(first_res, dict):
+                        url_preview = first_res.get('url', '缺失')
+                    elif isinstance(first_res, str):
+                        # 如果是字符串，可能是 JSON 串，尝试简单提取或直接打印部分内容
+                        url_preview = f"(String Data) {first_res[:50]}..."
+                    else:
+                        # 可能是 QueryResult 对象
+                        url_preview = getattr(first_res, 'url', '无法读取')
+
+                    logger.info(f"【数据流检查】传给LLM的第1条素材 URL信息: {url_preview}")
+                    logger.info(f"【数据流检查】素材总数: {len(results)}")
+            # ------------------------------------
             
             logger.info("正在生成首次段落总结")
             

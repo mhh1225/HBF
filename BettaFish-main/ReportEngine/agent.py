@@ -38,6 +38,14 @@ from .renderers import HTMLRenderer
 from .state import ReportState
 from .utils.config import settings, Settings
 
+# === 【马欢欢新增】引入链接修复特工 ===
+# 脚本存为 ReportEngine/ir/link_repair.py
+try:
+    from .ir.link_repair import LinkRepairAgent
+except ImportError:
+    # 避免如果没有这个文件导致整个项目跑不起来
+    LinkRepairAgent = None
+
 
 class StageOutputFormatError(ValueError):
     """阶段性输出结构不符合预期时抛出的受控异常。"""
@@ -677,6 +685,22 @@ class ReportAgent:
                 chapters
             )
             emit('stage', {'stage': 'chapters_compiled', 'chapter_count': len(chapters)})
+            # ========================================================
+            # 【新增】启动链接自愈流程 (Link Repair Loop)
+            # ========================================================
+            if LinkRepairAgent:
+                try:
+                    logger.info("🔧 启动链接修复特工，正在检测并替换失效链接...")
+                    emit('stage', {'stage': 'link_repairing', 'message': '正在验证并修复报告链接...'})
+
+                    repair_agent = LinkRepairAgent()
+                    # 直接修改 document_ir 对象
+                    document_ir = repair_agent.repair_process(document_ir)
+
+                    logger.info("✅ 链接修复完成")
+                except Exception as e:
+                    logger.warning(f"⚠️ 链接修复过程出现异常（不影响报告生成）: {e}")
+            # ========================================================
             html_report = self.renderer.render(document_ir)
             emit('stage', {'stage': 'html_rendered', 'html_length': len(html_report)})
 

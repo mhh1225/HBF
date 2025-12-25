@@ -24,7 +24,8 @@ from ReportEngine.utils.chart_validator import (
     ChartValidator,
     ChartRepairer,
     create_chart_validator,
-    create_chart_repairer
+    create_chart_repairer,
+    ValidationResult
 )
 from ReportEngine.utils.chart_repair_api import create_llm_repair_functions
 
@@ -2135,6 +2136,112 @@ class HTMLRenderer:
             return None
         return payload
 
+    # def _render_inline(self, run: Dict[str, Any]) -> str:
+    #     """
+    #     渲染单个inline run，支持多种marks叠加。
+    #
+    #     参数:
+    #         run: 含 text 与 marks 的内联节点。
+    #
+    #     返回:
+    #         str: 已包裹标签/样式的HTML片段。
+    #     """
+    #     text_value, marks = self._normalize_inline_payload(run)
+    #     math_mark = next((mark for mark in marks if mark.get("type") == "math"), None)
+    #     if math_mark:
+    #         latex = self._normalize_latex_string(math_mark.get("value"))
+    #         if not isinstance(latex, str) or not latex.strip():
+    #             latex = self._normalize_latex_string(text_value)
+    #         math_id = self._escape_attr(run.get("mathId", "")) if run.get("mathId") else ""
+    #         id_attr = f' data-math-id="{math_id}"' if math_id else ""
+    #         return f'<span class="math-inline"{id_attr}>\\( {self._escape_html(latex)} \\)</span>'
+    #
+    #     # 尝试从纯文本中提取数学公式（即便没有math mark）
+    #     math_id_hint = run.get("mathIds") or run.get("mathId")
+    #     mathified = self._render_text_with_inline_math(text_value, math_id_hint)
+    #     if mathified is not None:
+    #         return mathified
+    #
+    #     text = self._escape_html(text_value)
+    #     styles: List[str] = []
+    #     prefix: List[str] = []
+    #     suffix: List[str] = []
+    #     for mark in marks:
+    #         mark_type = mark.get("type")
+    #         if mark_type == "bold":
+    #             prefix.append("<strong>")
+    #             suffix.insert(0, "</strong>")
+    #         elif mark_type == "italic":
+    #             prefix.append("<em>")
+    #             suffix.insert(0, "</em>")
+    #         elif mark_type == "code":
+    #             prefix.append("<code>")
+    #             suffix.insert(0, "</code>")
+    #         elif mark_type == "highlight":
+    #             prefix.append("<mark>")
+    #             suffix.insert(0, "</mark>")
+    #         # 马欢欢先把这些代码注释掉
+    #         # elif mark_type == "link":
+    #         #     href_raw = mark.get("href")
+    #         #     if href_raw and href_raw != "#":
+    #         #         href = self._escape_attr(href_raw)
+    #         #         title = self._escape_attr(mark.get("title") or "")
+    #         #         prefix.append(f'<a href="{href}" title="{title}" target="_blank" rel="noopener">')
+    #         #         suffix.insert(0, "</a>")
+    #         #     else:
+    #         #         prefix.append('<span class="broken-link">')
+    #         #         suffix.insert(0, "</span>")
+    #         # 马欢欢新修改
+    #         elif mark_type == "link":
+    #             href_raw = mark.get("href")
+    #             if href_raw and href_raw != "#":
+    #                 # 关键修复：强制删掉链接里的换行符和首尾空格
+    #                 clean_href = href_raw.replace("\n", "").replace("\r", "").strip()
+    #                 href = self._escape_attr(clean_href)
+    #                 title = self._escape_attr(mark.get("title") or "")
+    #                 # 关键修复：强制加上蓝色和下划线样式
+    #                 prefix.append(
+    #                     f'<a href="{href}" title="{title}" target="_blank" rel="noopener" style="color: #0066CC; text-decoration: underline;">')
+    #                 suffix.insert(0, "</a>")
+    #             else:
+    #                 prefix.append('<span class="broken-link">')
+    #                 suffix.insert(0, "</span>")
+    #         # 马欢欢修改结束
+    #         elif mark_type == "color":
+    #             value = mark.get("value")
+    #             if value:
+    #                 styles.append(f"color: {value}")
+    #         elif mark_type == "font":
+    #             family = mark.get("family")
+    #             size = mark.get("size")
+    #             weight = mark.get("weight")
+    #             if family:
+    #                 styles.append(f"font-family: {family}")
+    #             if size:
+    #                 styles.append(f"font-size: {size}")
+    #             if weight:
+    #                 styles.append(f"font-weight: {weight}")
+    #         elif mark_type == "underline":
+    #             styles.append("text-decoration: underline")
+    #         elif mark_type == "strike":
+    #             styles.append("text-decoration: line-through")
+    #         elif mark_type == "subscript":
+    #             prefix.append("<sub>")
+    #             suffix.insert(0, "</sub>")
+    #         elif mark_type == "superscript":
+    #             prefix.append("<sup>")
+    #             suffix.insert(0, "</sup>")
+    #
+    #     if styles:
+    #         style_attr = "; ".join(styles)
+    #         prefix.insert(0, f'<span style="{style_attr}">')
+    #         suffix.append("</span>")
+    #
+    #     if not marks and "**" in (run.get("text") or ""):
+    #         return self._render_markdown_bold_fallback(run.get("text", ""))
+    #
+    #     return "".join(prefix) + text + "".join(suffix)
+    # 2025.12.24马欢欢新修改的
     def _render_inline(self, run: Dict[str, Any]) -> str:
         """
         渲染单个inline run，支持多种marks叠加。
@@ -2146,6 +2253,18 @@ class HTMLRenderer:
             str: 已包裹标签/样式的HTML片段。
         """
         text_value, marks = self._normalize_inline_payload(run)
+
+        # === 【新增】强力兜底：如果有链接，直接把文本改成 URL ===
+        # 目的：不管原文写的是什么（例如"点击查看"），直接强制显示为 "https://..."
+        link_mark = next((m for m in marks if m.get("type") == "link"), None)
+        if link_mark:
+            href = link_mark.get("href")
+            # 只有当链接包含 http 且有效时才替换
+            if href and href != "#" and "http" in href:
+                text_value = href.strip()
+        # =====================================================
+
+        # 处理数学公式 (如果已经变成URL了，通常不需要再处理公式，但保留逻辑无妨)
         math_mark = next((mark for mark in marks if mark.get("type") == "math"), None)
         if math_mark:
             latex = self._normalize_latex_string(math_mark.get("value"))
@@ -2155,7 +2274,7 @@ class HTMLRenderer:
             id_attr = f' data-math-id="{math_id}"' if math_id else ""
             return f'<span class="math-inline"{id_attr}>\\( {self._escape_html(latex)} \\)</span>'
 
-        # 尝试从纯文本中提取数学公式（即便没有math mark）
+        # 尝试从纯文本中提取数学公式
         math_id_hint = run.get("mathIds") or run.get("mathId")
         mathified = self._render_text_with_inline_math(text_value, math_id_hint)
         if mathified is not None:
@@ -2165,8 +2284,10 @@ class HTMLRenderer:
         styles: List[str] = []
         prefix: List[str] = []
         suffix: List[str] = []
+
         for mark in marks:
             mark_type = mark.get("type")
+
             if mark_type == "bold":
                 prefix.append("<strong>")
                 suffix.insert(0, "</strong>")
@@ -2180,15 +2301,27 @@ class HTMLRenderer:
                 prefix.append("<mark>")
                 suffix.insert(0, "</mark>")
             elif mark_type == "link":
+                # === 链接渲染逻辑 (含 file:// 修复) ===
                 href_raw = mark.get("href")
-                if href_raw and href_raw != "#":
-                    href = self._escape_attr(href_raw)
-                    title = self._escape_attr(mark.get("title") or "")
-                    prefix.append(f'<a href="{href}" title="{title}" target="_blank" rel="noopener">')
-                    suffix.insert(0, "</a>")
+                if not href_raw or href_raw == "#":
+                    target_url = "javascript:void(0);"
                 else:
-                    prefix.append('<span class="broken-link">')
-                    suffix.insert(0, "</span>")
+                    target_url = str(href_raw).replace("\n", "").replace("\r", "").strip()
+
+                safe_href = self._escape_attr(target_url)
+                safe_title = self._escape_attr(mark.get("title") or "")
+
+                # 强制样式：蓝色 + 下划线
+                link_tag = (
+                    f'<a href="{safe_href}" '
+                    f'title="{safe_title}" '
+                    f'target="_blank" '
+                    f'rel="noopener" '
+                    f'style="color: #0066CC; text-decoration: underline; cursor: pointer;">'
+                )
+                prefix.append(link_tag)
+                suffix.insert(0, "</a>")
+
             elif mark_type == "color":
                 value = mark.get("value")
                 if value:
@@ -2223,7 +2356,6 @@ class HTMLRenderer:
             return self._render_markdown_bold_fallback(run.get("text", ""))
 
         return "".join(prefix) + text + "".join(suffix)
-
     def _render_markdown_bold_fallback(self, text: str) -> str:
         """在LLM未使用marks时兜底转换**粗体**"""
         if not text:
