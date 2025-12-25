@@ -188,6 +188,7 @@ class ChapterGenerationNode(BaseNode):
         # 马欢欢新增代码块
         # 从context中获取前面Agent收集的来源数据（如搜索链接、引用内容）
         self.sources = context.get("sources", [])  # 来源格式：[{"url": "xxx", "content": "xxx"}, ...]
+        print(f"【侦探调试】拿到的原始链接数据: {self.sources}")  # <--- 加上这一句！
         # ==========================================
         chapter_dir = self.storage.begin_chapter(run_dir, chapter_meta)
         # 马欢欢到此结束（后面的原代码保持不变）
@@ -298,6 +299,8 @@ class ChapterGenerationNode(BaseNode):
         chapter_plan_map = context.get("chapter_directives", {})
         chapter_plan = chapter_plan_map.get(section.chapter_id) if chapter_plan_map else {}
         payload = {
+            # 马欢欢新修改，这样 Prompt 里就有了明确的“参考书目”，模型就能看见具体链接了
+            "sources": context.get("sources", []),
             "section": {
                 "chapterId": section.chapter_id,
                 "title": section.title,

@@ -196,8 +196,8 @@ class MediaCrawlerDB:
             elif row.get('content_url'): db_url = row.get('content_url')
             elif row.get('url'): db_url = row.get('url') # daily_news
 
-            # 过滤掉明显的垃圾链接 (如仅有域名)
-            if db_url and len(str(db_url)) > 20:
+            # 过滤掉明显的垃圾链接 (如仅有域名)，把20改成30
+            if db_url and len(str(db_url)) > 30:
                 return str(db_url).strip()
 
         except Exception as e:
