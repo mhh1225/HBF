@@ -382,7 +382,36 @@ class ReportAgent:
             fallback_llm_clients=self.json_rescue_clients,
             error_log_dir=self.config.JSON_ERROR_LOG_DIR,
         )
-    
+
+    # ========================================================
+    # 马欢欢【新增】Step 2: 读取 sources.json 的辅助方法
+    # ========================================================
+    def _load_sources_from_file(self) -> List[Dict[str, Any]]:
+        """从文件系统加载 InsightEngine 导出的链接数据"""
+        # 尝试查找 sources.json 的可能位置
+        # 1. 优先找 InsightEngine 的默认输出目录
+        # 2. 其次找当前根目录
+        possible_paths = [
+            Path("insight_engine_streamlit_reports") / "sources.json",
+            Path("sources.json"),
+            Path(self.config.OUTPUT_DIR) / "sources.json"
+        ]
+
+        for path in possible_paths:
+            if path.exists():
+                try:
+                    import json
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    logger.info(f"✅ [ReportEngine] 成功加载 {len(data)} 条 sources from {path}")
+                    return data
+                except Exception as e:
+                    logger.warning(f"⚠️ 加载 sources.json 失败 ({path}): {e}")
+
+        logger.warning("⚠️ 未找到 sources.json，报告将不包含详细引用链接")
+        return []
+
+    # =================================
     def generate_report(self, query: str, reports: List[Any], forum_logs: str = "",
                         custom_template: str = "", save_report: bool = True,
                         stream_handler: Optional[Callable[[str, Dict[str, Any]], None]] = None) -> str:
@@ -497,7 +526,10 @@ class ReportAgent:
                 for entry in word_plan.get("chapters", [])
                 if entry.get("chapterId")
             }
-
+            # 马欢欢【新增】: 调用加载方法，获取链接数据
+            # ========================================================
+            sources_data = self._load_sources_from_file()
+            #===============================
             generation_context = self._build_generation_context(
                 query,
                 normalized_reports,
@@ -507,6 +539,7 @@ class ReportAgent:
                 chapter_targets,
                 word_plan,
                 template_overview,
+                sources=sources_data,  # <--- 马欢欢【关键】这里新增参数传入！
             )
             # IR/渲染需要的全局元数据，带上设计稿给出的标题/主题/目录/篇幅信息
             manifest_meta = {
@@ -823,6 +856,7 @@ class ReportAgent:
         chapter_directives: Dict[str, Any],
         word_plan: Dict[str, Any],
         template_overview: Dict[str, Any],
+        sources: Optional[List[Dict[str, Any]]] = None,  # <--- 【新增参数】
     ) -> Dict[str, Any]:
         """
         构造章节生成所需的共享上下文。
@@ -853,6 +887,11 @@ class ReportAgent:
         return {
             "query": query,
             "template_name": template_result.get("template_name"),
+            # ========================================================
+            # 【新增】Step 3-B: 把 sources 塞进 Context 字典
+            # 这就是师兄说的“在Prompt里拼接Link”的实现位置
+            # ========================================================
+            "sources": sources or [],
             "reports": reports,
             "forum_logs": self._stringify(forum_logs),
             "theme_tokens": theme_tokens,

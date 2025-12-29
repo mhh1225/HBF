@@ -427,6 +427,48 @@ class DeepSearchAgent:
             
             # Step 3: 生成最终报告
             final_report = self._generate_final_report()
+
+            # ========================================================
+            # 马欢欢【新增代码】开始：导出 sources.json 给 ReportEngine 使用
+            # ========================================================
+            try:
+                import json
+
+                # 1. 收集所有段落中用到的 Search 对象
+                all_searches = []
+                if hasattr(self.state, 'paragraphs'):
+                    for p in self.state.paragraphs:
+                        # 检查 research 对象里有没有 searches 列表（通常由 add_search 添加）
+                        if hasattr(p, 'research') and hasattr(p.research, 'searches'):
+                            all_searches.extend(p.research.searches)
+
+                # 2. 提取有效链接并去重
+                unique_sources = {}
+                for s in all_searches:
+                    # 确保有 url 且是 http 开头
+                    if hasattr(s, 'url') and s.url and str(s.url).startswith("http"):
+                        # 用 url 做去重键
+                        if s.url not in unique_sources:
+                            unique_sources[s.url] = {
+                                "url": str(s.url),
+                                # 优先用 title，没有则截取 content
+                                "title": str(s.title) if s.title else (str(s.content)[:50] + "...")
+                            }
+
+                # 3. 保存为 sources.json
+                sources_list = list(unique_sources.values())
+                sources_path = os.path.join(self.config.OUTPUT_DIR, "sources.json")
+
+                with open(sources_path, "w", encoding="utf-8") as f:
+                    json.dump(sources_list, f, ensure_ascii=False, indent=2)
+
+                logger.info(f"✅ [InsightEngine] 已成功导出 {len(sources_list)} 条有效链接到: {sources_path}")
+
+            except Exception as e:
+                logger.error(f"⚠️ [InsightEngine] 导出 sources.json 失败: {e}")
+            # ========================================================
+            # 【新增代码】结束
+            # ========================================================
             
             # Step 4: 保存报告
             if save_report:
